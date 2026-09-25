@@ -1,0 +1,11 @@
+faster-whisper
+transformers
+datasets[audio]
+jiwer
+matplotlib
+pandas
+psutil
+soundfile
+torch
+torchaudio
+librosa
