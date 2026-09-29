@@ -25,7 +25,17 @@ pip install -r requirements.txt
 
 ## Run
 
-The default example uses a small LibriSpeech test split:
+The toolkit accepts a dataset or uses a built-in synthetic dataset for validation in constrained environments.
+
+Default benchmark run:
+
+```bash
+python scripts/benchmark.py --dataset dummy --samples 4
+python scripts/plot_results.py
+python scripts/make_report.py
+```
+
+Real dataset example using a LibriSpeech test split:
 
 ```bash
 python scripts/benchmark.py --dataset librispeech_asr --config clean --split test.clean --samples 20
@@ -40,6 +50,24 @@ python scripts/benchmark.py --dataset mozilla-foundation/common_voice_17_0 --con
 ```
 
 Dataset availability, licensing, access requirements, and column names can vary by release. The loader attempts to detect common audio/text column names.
+
+## Input and output flow
+
+### Inputs
+- Dataset source or synthetic fallback dataset
+- Selected config and split
+- Number of samples to evaluate
+- Model checkpoints for Whisper, Faster-Whisper, and Wav2Vec2
+- CPU or CUDA execution mode
+
+### Outputs
+- `results/benchmark_results.csv`
+- `results/benchmark_summary.csv`
+- `results/wer.png`
+- `results/inference_time.png`
+- `results/memory.png`
+- `reports/benchmark_report.md`
+- `result.zip` (final packaged archive of the generated outputs)
 
 ## Model notes
 
@@ -56,8 +84,12 @@ The toolkit expects the selected dataset to contain real audio. To benchmark con
 ## Outputs
 
 - `results/benchmark_results.csv`
-- `results/benchmark_results.png`
+- `results/benchmark_summary.csv`
+- `results/wer.png`
+- `results/inference_time.png`
+- `results/memory.png`
 - `reports/benchmark_report.md`
+- `result.zip`
 
 ## License
 
