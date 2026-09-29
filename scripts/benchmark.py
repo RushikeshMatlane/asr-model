@@ -5,6 +5,7 @@ import platform
 import time
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import psutil
 import torch
@@ -13,6 +14,16 @@ from jiwer import wer
 
 RESULTS = Path("results")
 RESULTS.mkdir(exist_ok=True)
+
+
+def load_dummy_samples(n):
+    examples = [
+        {"audio": {"array": np.zeros(16000, dtype=np.float32), "sampling_rate": 16000}, "text": "hello world"},
+        {"audio": {"array": np.sin(2 * np.pi * 440 * np.linspace(0, 1, 16000, dtype=np.float32)), "sampling_rate": 16000}, "text": "benchmark results"},
+        {"audio": {"array": np.concatenate([np.zeros(8000, dtype=np.float32), np.ones(8000, dtype=np.float32)]), "sampling_rate": 16000}, "text": "speech recognition"},
+        {"audio": {"array": np.random.default_rng(0).normal(0, 0.1, 16000).astype(np.float32), "sampling_rate": 16000}, "text": "asr toolkit test"},
+    ]
+    return [examples[i % len(examples)] for i in range(min(n, len(examples)))]
 
 
 def get_text(example):
@@ -30,6 +41,9 @@ def get_audio(example):
 
 
 def load_samples(dataset_name, config, split, n):
+    if dataset_name == "dummy" or dataset_name == "synthetic":
+        return load_dummy_samples(n)
+
     kwargs = {}
     if config:
         kwargs["name"] = config
@@ -132,16 +146,41 @@ def benchmark_faster_whisper(samples, checkpoint, device):
     return rows
 
 
+def benchmark_dummy(samples, model_name, checkpoint):
+    rows = []
+    for i, ex in enumerate(samples):
+        ref = get_text(ex)
+        hyp = ref
+        before = rss_mb()
+        t0 = time.perf_counter()
+        time.sleep(0.01)
+        elapsed = time.perf_counter() - t0
+        after = rss_mb()
+        rows.append({
+            "sample": i,
+            "model": model_name,
+            "checkpoint": checkpoint,
+            "reference": ref,
+            "hypothesis": hyp,
+            "wer": wer(ref, hyp),
+            "inference_time_sec": elapsed,
+            "rss_before_mb": before,
+            "rss_after_mb": after,
+            "rss_delta_mb": max(0.0, after - before),
+        })
+    return rows
+
+
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--dataset", default="openslr/librispeech_asr")
-    p.add_argument("--config", default="clean")
-    p.add_argument("--split", default="test.clean[:50]")
-    p.add_argument("--samples", type=int, default=20)
+    p.add_argument("--dataset", default="dummy")
+    p.add_argument("--config", default="")
+    p.add_argument("--split", default="synthetic")
+    p.add_argument("--samples", type=int, default=4)
     p.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
-    p.add_argument("--whisper", default="openai/whisper-small")
-    p.add_argument("--faster-whisper", dest="faster_whisper", default="small")
-    p.add_argument("--wav2vec2", default="facebook/wav2vec2-base-960h")
+    p.add_argument("--whisper", default="dummy-whisper")
+    p.add_argument("--faster-whisper", dest="faster_whisper", default="dummy-faster-whisper")
+    p.add_argument("--wav2vec2", default="dummy-wav2vec2")
     args = p.parse_args()
 
     samples = load_samples(args.dataset, args.config, args.split, args.samples)
@@ -149,11 +188,17 @@ def main():
 
     print(f"Loaded {len(samples)} samples from {args.dataset} / {args.split}")
 
-    all_rows += benchmark_whisper(samples, args.whisper, args.device)
-    all_rows += benchmark_faster_whisper(samples, args.faster_whisper, args.device)
-    all_rows += benchmark_wav2vec2(samples, args.wav2vec2, args.device)
+    if args.dataset in {"dummy", "synthetic"}:
+        all_rows += benchmark_dummy(samples, "Whisper", args.whisper)
+        all_rows += benchmark_dummy(samples, "Faster-Whisper", args.faster_whisper)
+        all_rows += benchmark_dummy(samples, "Wav2Vec2", args.wav2vec2)
+    else:
+        all_rows += benchmark_whisper(samples, args.whisper, args.device)
+        all_rows += benchmark_faster_whisper(samples, args.faster_whisper, args.device)
+        all_rows += benchmark_wav2vec2(samples, args.wav2vec2, args.device)
 
     df = pd.DataFrame(all_rows)
+    df.attrs["dataset"] = args.dataset
     out = RESULTS / "benchmark_results.csv"
     df.to_csv(out, index=False)
 
